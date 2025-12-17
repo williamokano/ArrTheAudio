@@ -1,33 +1,111 @@
 """Pydantic models for API requests and responses."""
 
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+# Nested models for Sonarr webhook
+class SonarrSeries(BaseModel):
+    """Sonarr series information."""
+
+    id: int
+    title: str
+    tvdbId: Optional[int] = None
+    imdbId: Optional[str] = None
+
+
+class SonarrEpisode(BaseModel):
+    """Sonarr episode information."""
+
+    id: int
+    seasonNumber: int
+    episodeNumber: int
+
+
+class SonarrEpisodeFile(BaseModel):
+    """Sonarr episode file information."""
+
+    id: int
+    path: str
 
 
 class SonarrWebhookPayload(BaseModel):
     """Sonarr webhook payload model."""
 
-    series_title: Optional[str] = Field(None, alias="series.title")
-    series_id: Optional[int] = Field(None, alias="series.id")
-    series_tvdb_id: Optional[int] = Field(None, alias="series.tvdbId")
-    episode_file_path: Optional[str] = Field(None, alias="episodeFile.path")
-    episode_file_id: Optional[int] = Field(None, alias="episodeFile.id")
-    event_type: Optional[str] = Field(None, alias="eventType")
+    eventType: str = Field(..., alias="eventType")
+    series: SonarrSeries
+    episodes: Optional[List[SonarrEpisode]] = None
+    episodeFile: Optional[SonarrEpisodeFile] = None
+
+    @property
+    def event_type(self) -> str:
+        """Get event type (snake_case property)."""
+        return self.eventType
+
+    @property
+    def series_title(self) -> Optional[str]:
+        """Get series title."""
+        return self.series.title if self.series else None
+
+    @property
+    def series_tvdb_id(self) -> Optional[int]:
+        """Get TVDB ID."""
+        return self.series.tvdbId if self.series else None
+
+    @property
+    def episode_file_path(self) -> Optional[str]:
+        """Get episode file path."""
+        return self.episodeFile.path if self.episodeFile else None
 
     class Config:
-        populate_by_name = True  # Allow both alias and field name
+        populate_by_name = True
+
+
+# Nested models for Radarr webhook
+class RadarrMovie(BaseModel):
+    """Radarr movie information."""
+
+    id: int
+    title: str
+    year: Optional[int] = None
+    tmdbId: Optional[int] = None
+    imdbId: Optional[str] = None
+
+
+class RadarrMovieFile(BaseModel):
+    """Radarr movie file information."""
+
+    id: int
+    relativePath: str
 
 
 class RadarrWebhookPayload(BaseModel):
     """Radarr webhook payload model."""
 
-    movie_title: Optional[str] = Field(None, alias="movie.title")
-    movie_id: Optional[int] = Field(None, alias="movie.id")
-    movie_tmdb_id: Optional[int] = Field(None, alias="movie.tmdbId")
-    movie_file_path: Optional[str] = Field(None, alias="movieFile.path")
-    movie_file_id: Optional[int] = Field(None, alias="movieFile.id")
-    event_type: Optional[str] = Field(None, alias="eventType")
+    eventType: str = Field(..., alias="eventType")
+    movie: RadarrMovie
+    movieFile: Optional[RadarrMovieFile] = None
+
+    @property
+    def event_type(self) -> str:
+        """Get event type (snake_case property)."""
+        return self.eventType
+
+    @property
+    def movie_title(self) -> Optional[str]:
+        """Get movie title."""
+        return self.movie.title if self.movie else None
+
+    @property
+    def movie_tmdb_id(self) -> Optional[int]:
+        """Get TMDB ID."""
+        return self.movie.tmdbId if self.movie else None
+
+    @property
+    def movie_file_path(self) -> Optional[str]:
+        """Get movie file path."""
+        return self.movieFile.relativePath if self.movieFile else None
 
     class Config:
         populate_by_name = True
