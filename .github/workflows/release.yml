@@ -1,0 +1,262 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/arrtheaudio
+  PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
+
+jobs:
+  test:
+    name: Run Tests Before Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.test
+          push: false
+          load: true
+          tags: arrtheaudio:test
+
+      - name: Run all tests
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/tests:/app/tests \
+            -v ${{ github.workspace }}/src:/app/src \
+            arrtheaudio:test \
+            pytest tests/ -v --tb=short
+
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major=$(echo $VERSION | cut -d. -f1)" >> $GITHUB_OUTPUT
+          echo "minor=$(echo $VERSION | cut -d. -f1-2)" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+          repository: ${{ env.DOCKER_IMAGE }}
+          readme-filepath: ./README.md
+        continue-on-error: true
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: previoustag
+        run: |
+          PREV_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+          echo "tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -z "${{ steps.previoustag.outputs.tag }}" ]; then
+            # First release - include all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            # Generate changelog since previous tag
+            CHANGELOG=$(git log ${{ steps.previoustag.outputs.tag }}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Save to file for multi-line output
+          echo "$CHANGELOG" > /tmp/changelog.txt
+
+          # Categorize commits
+          FEATURES=$(echo "$CHANGELOG" | grep -i "^- feat" || true)
+          FIXES=$(echo "$CHANGELOG" | grep -i "^- fix" || true)
+          DOCS=$(echo "$CHANGELOG" | grep -i "^- docs" || true)
+          CHORES=$(echo "$CHANGELOG" | grep -i "^- chore" || true)
+          OTHER=$(echo "$CHANGELOG" | grep -iv "^- \(feat\|fix\|docs\|chore\)" || true)
+
+          # Build formatted changelog
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "$FEATURES" ]; then
+              echo "### ✨ Features"
+              echo "$FEATURES"
+              echo ""
+            fi
+            if [ -n "$FIXES" ]; then
+              echo "### 🐛 Bug Fixes"
+              echo "$FIXES"
+              echo ""
+            fi
+            if [ -n "$DOCS" ]; then
+              echo "### 📚 Documentation"
+              echo "$DOCS"
+              echo ""
+            fi
+            if [ -n "$OTHER" ]; then
+              echo "### 🔧 Other Changes"
+              echo "$OTHER"
+              echo ""
+            fi
+            if [ -n "$CHORES" ]; then
+              echo "### 🏗️ Chores"
+              echo "$CHORES"
+              echo ""
+            fi
+            echo "---"
+            echo ""
+            echo "## Docker Images"
+            echo ""
+            echo "Pull the latest release:"
+            echo '```bash'
+            echo "docker pull ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }}"
+            echo "docker pull ${{ env.DOCKER_IMAGE }}:latest"
+            echo '```'
+            echo ""
+            echo "**Supported Platforms:** linux/amd64, linux/arm64, linux/arm/v7"
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo "See [WEBHOOK_SETUP.md](WEBHOOK_SETUP.md) for complete setup instructions."
+          } > /tmp/release_notes.md
+
+          echo "Generated release notes:"
+          cat /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ steps.version.outputs.version }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on related issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.version.outputs.version }}';
+            const changelog = require('fs').readFileSync('/tmp/changelog.txt', 'utf8');
+
+            // Extract issue numbers from commit messages
+            const issueNumbers = [...new Set(
+              changelog.match(/#\d+/g)?.map(num => num.slice(1)) || []
+            )];
+
+            // Comment on each issue
+            for (const issueNumber of issueNumbers) {
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: parseInt(issueNumber),
+                  body: `🎉 This issue has been resolved in [v${version}](${context.payload.release.html_url})`
+                });
+              } catch (error) {
+                console.log(`Could not comment on issue #${issueNumber}: ${error.message}`);
+              }
+            }
+        continue-on-error: true
+
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: create-release
+    if: always()
+
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Notify success
+        if: needs.create-release.result == 'success'
+        run: |
+          echo "✅ Release v${{ steps.version.outputs.version }} published successfully!"
+          echo "Docker images pushed to Docker Hub"
+          echo "GitHub release created with changelog"
+
+      - name: Notify failure
+        if: needs.create-release.result == 'failure'
+        run: |
+          echo "❌ Release v${{ steps.version.outputs.version }} failed!"
+          exit 1
