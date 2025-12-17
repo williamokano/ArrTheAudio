@@ -71,6 +71,13 @@ def setup_logging(config: LoggingConfig) -> None:
         force=True,  # Override any existing configuration
     )
 
+    # Suppress verbose logging from third-party libraries
+    # These can leak sensitive information (API keys, tokens, etc.)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("hpack").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 def get_logger(name: Optional[str] = None) -> structlog.stdlib.BoundLogger:
     """Get a logger instance.
