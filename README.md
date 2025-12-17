@@ -1,5 +1,11 @@
 # ArrTheAudio
 
+[![Tests](https://github.com/yourusername/arrtheaudio/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/arrtheaudio/actions/workflows/test.yml)
+[![Release](https://github.com/yourusername/arrtheaudio/actions/workflows/release.yml/badge.svg)](https://github.com/yourusername/arrtheaudio/actions/workflows/release.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/arrtheaudio)](https://hub.docker.com/r/yourusername/arrtheaudio)
+[![License](https://img.shields.io/github/license/yourusername/arrtheaudio)](LICENSE)
+[![codecov](https://codecov.io/gh/yourusername/arrtheaudio/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/arrtheaudio)
+
 Automatic audio track fixer for Sonarr/Radarr (Arr stack). Ensures the correct audio track is set as default in video files based on original language or configurable priorities.
 
 ## Features
@@ -19,17 +25,27 @@ Automatic audio track fixer for Sonarr/Radarr (Arr stack). Ensures the correct a
 - ✅ MKV support with mkvpropedit
 - ✅ Language priority (global + path-specific overrides)
 - ✅ Path mapping configuration
-- ✅ CLI for processing single files
+- ✅ CLI for processing single files and batch scanning
 - ✅ Structured logging
 - ✅ Unit tests
 
+**Phase 2 (Daemon & Webhooks) - ✅ Complete**
+
+- ✅ FastAPI webhook receiver on port 9393
+- ✅ Sonarr/Radarr webhook integration
+- ✅ HMAC signature authentication
+- ✅ Path mapping (Arr → local filesystem)
+- ✅ Background task processing
+- ✅ Docker Compose deployment
+- ✅ Integration tests
+- ✅ Comprehensive setup documentation
+
 **Coming Soon:**
 
-- Phase 2: Daemon mode with webhook receiver for Sonarr/Radarr
 - Phase 3: TMDB integration for automatic original language detection
 - Phase 4: MP4 support with ffmpeg
-- Phase 5: Batch processing
-- Phase 6: Production hardening
+- Phase 5: Batch processing API endpoint
+- Phase 6: Production hardening (metrics, monitoring)
 
 ## Requirements
 
