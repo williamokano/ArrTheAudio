@@ -1,0 +1,33 @@
+# ArrTheAudio Configuration - DRY RUN MODE
+
+# Global language priority
+language_priority:
+  - eng
+  - jpn
+  - ita
+  - spa
+
+# Path-specific overrides
+path_overrides:
+  - path: "/media/anime/**"
+    language_priority:
+      - jpn
+      - eng
+
+path_mappings: []
+
+# Container support
+containers:
+  mkv: true
+  mp4: false
+
+# Logging
+logging:
+  format: text  # Human-readable for testing
+  level: info
+  output: /logs/arrtheaudio.log
+
+# Execution - DRY RUN
+execution:
+  dry_run: true           # Won't modify files!
+  skip_if_correct: true
