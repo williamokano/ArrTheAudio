@@ -1,0 +1,80 @@
+# ArrTheAudio Configuration Example
+# Copy this file to config/config.yaml and customize
+
+# Global language priority (fallback order)
+# Used when no path-specific override matches
+language_priority:
+  - eng  # English
+  - jpn  # Japanese
+  - ita  # Italian
+  - spa  # Spanish
+
+# Path-specific language priority overrides (glob patterns)
+# More specific paths should be listed first
+# Patterns are evaluated in order (first match wins)
+path_overrides:
+  - path: "/media/tv/Anime/**"
+    language_priority:
+      - jpn  # Japanese first for anime
+      - eng  # English fallback
+
+  - path: "/media/tv/Korean Shows/**"
+    language_priority:
+      - kor  # Korean first
+      - eng  # English fallback
+
+  - path: "/media/movies/Bollywood/**"
+    language_priority:
+      - hin  # Hindi first
+      - eng  # English fallback
+
+# Path mappings (Arr paths → Daemon paths)
+# Sonarr/Radarr send their internal paths, which may differ from daemon's filesystem
+# First matching prefix is used
+# Uncomment and customize based on your setup
+path_mappings:
+  - remote: "/tv"                   # Sonarr's path
+    local: "/data/media/tv"         # Daemon's path
+
+  - remote: "/movies"               # Radarr's path
+    local: "/data/media/movies"     # Daemon's path
+
+  # - remote: "/anime"
+  #   local: "/mnt/storage/anime"
+
+# TMDB Integration (Phase 3)
+tmdb:
+  enabled: true
+  api_key: "${TMDB_API_KEY}"  # Set via environment variable
+  cache_ttl_days: 30
+  cache_path: /config/tmdb_cache.db
+
+# Container support
+containers:
+  mkv: true   # Enable MKV support (mkvpropedit)
+  mp4: false  # MP4 support (Phase 4 - not yet implemented)
+
+# API settings (Phase 2 - Daemon mode)
+api:
+  host: 0.0.0.0
+  port: 9393
+  workers: 2
+  webhook_secret: "${WEBHOOK_SECRET}"  # Set via environment variable
+
+# Processing
+processing:
+  max_queue_size: 100
+  worker_count: 2
+  timeout_seconds: 300
+  retry_attempts: 2
+
+# Logging
+logging:
+  format: json  # json or text
+  level: info   # debug, info, warning, error, critical
+  output: /logs/arrtheaudio.log
+
+# Execution behavior
+execution:
+  dry_run: false           # Set to true to test without making changes
+  skip_if_correct: true    # Skip files where track is already correct
