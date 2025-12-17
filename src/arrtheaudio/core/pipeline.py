@@ -30,7 +30,7 @@ class ProcessingPipeline:
         self.analyzer = AudioAnalyzer()
         self.selector = TrackSelector(config)
 
-    def process(
+    async def process(
         self, file_path: Path, metadata: Optional[MediaMetadata] = None
     ) -> ProcessResult:
         """Process a single file through the complete pipeline.

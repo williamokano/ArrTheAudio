@@ -10,6 +10,7 @@ class MediaMetadata:
 
     original_language: Optional[str] = None  # ISO 639-2 language code
     source: Literal["sonarr", "radarr", "tmdb", "heuristic", "none"] = "none"
+    media_type: Optional[Literal["tv", "movie"]] = None  # Media type
     title: Optional[str] = None  # Media title
     year: Optional[int] = None  # Release year
     tmdb_id: Optional[int] = None  # TMDB ID

@@ -43,11 +43,13 @@ path_mappings:
   #   local: "/mnt/storage/anime"
 
 # TMDB Integration (Phase 3)
+# Automatically detects original language from The Movie Database
+# Requires free API key from https://www.themoviedb.org/settings/api
 tmdb:
-  enabled: true
-  api_key: "${TMDB_API_KEY}"  # Set via environment variable
-  cache_ttl_days: 30
-  cache_path: /config/tmdb_cache.db
+  enabled: true                       # Set to false to disable TMDB lookups
+  api_key: "${TMDB_API_KEY}"          # Set via environment variable
+  cache_ttl_days: 30                  # How long to cache TMDB responses
+  cache_path: /config/tmdb_cache.db   # SQLite cache location
 
 # Container support
 containers:

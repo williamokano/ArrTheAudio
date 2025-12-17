@@ -6,6 +6,7 @@ pydantic-settings==2.1.0
 
 # HTTP client (TMDB)
 httpx==0.27.2
+tenacity==8.2.3
 
 # Configuration
 pyyaml==6.0.1

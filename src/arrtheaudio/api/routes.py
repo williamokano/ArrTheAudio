@@ -20,6 +20,9 @@ from arrtheaudio.api.models import (
 )
 from arrtheaudio.core.pipeline import ProcessingPipeline
 from arrtheaudio.core.scanner import FileScanner
+from arrtheaudio.metadata.cache import TMDBCache
+from arrtheaudio.metadata.tmdb import TMDBClient
+from arrtheaudio.metadata.resolver import MetadataResolver
 from arrtheaudio.utils.logger import get_logger
 from arrtheaudio.utils.path_mapper import PathMapper
 
@@ -42,19 +45,33 @@ def verify_webhook_signature(body: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-async def process_file_task(file_path: Path, config, job_id: str):
+async def process_file_task(file_path: Path, config, job_id: str, arr_metadata: dict = None):
     """Background task to process a file.
 
     Args:
         file_path: Path to the file
         config: Application configuration
         job_id: Job identifier
+        arr_metadata: Optional Arr metadata from webhook
     """
     logger.info("Starting background processing", file=str(file_path), job_id=job_id)
 
     try:
+        # Initialize TMDB client and resolver if enabled
+        resolver = None
+        if config.tmdb.enabled and config.tmdb.api_key:
+            cache = TMDBCache(Path(config.tmdb.cache_path), config.tmdb.cache_ttl_days)
+            tmdb_client = TMDBClient(config.tmdb.api_key, cache)
+            resolver = MetadataResolver(tmdb_client, config)
+        else:
+            resolver = MetadataResolver(None, config)
+
+        # Resolve metadata
+        metadata = await resolver.resolve(file_path, arr_metadata)
+
+        # Process file with metadata
         pipeline = ProcessingPipeline(config)
-        result = pipeline.process(file_path)
+        result = await pipeline.process(file_path, metadata)
 
         logger.info(
             "Background processing complete",
@@ -62,6 +79,10 @@ async def process_file_task(file_path: Path, config, job_id: str):
             job_id=job_id,
             status=result.status,
         )
+
+        # Close TMDB client if it was created
+        if config.tmdb.enabled and config.tmdb.api_key:
+            await tmdb_client.close()
 
     except Exception as e:
         logger.exception("Background processing failed", file=str(file_path), job_id=job_id)
@@ -123,11 +144,18 @@ async def sonarr_webhook(
             status="rejected", message=f"File not found: {local_path}"
         )
 
+    # Extract metadata for TMDB lookup
+    arr_metadata = {
+        "media_type": "tv",
+        "tvdb_id": payload.series_tvdb_id,
+        "title": payload.series_title,
+    }
+
     # Generate job ID and queue for processing
     job_id = str(uuid.uuid4())
 
-    # Add to background tasks
-    background_tasks.add_task(process_file_task, local_path, config, job_id)
+    # Add to background tasks with metadata
+    background_tasks.add_task(process_file_task, local_path, config, job_id, arr_metadata)
 
     logger.info("File queued for processing", file=str(local_path), job_id=job_id)
 
@@ -194,11 +222,18 @@ async def radarr_webhook(
             status="rejected", message=f"File not found: {local_path}"
         )
 
+    # Extract metadata for TMDB lookup
+    arr_metadata = {
+        "media_type": "movie",
+        "tmdb_id": payload.movie_tmdb_id,
+        "title": payload.movie_title,
+    }
+
     # Generate job ID and queue for processing
     job_id = str(uuid.uuid4())
 
-    # Add to background tasks
-    background_tasks.add_task(process_file_task, local_path, config, job_id)
+    # Add to background tasks with metadata
+    background_tasks.add_task(process_file_task, local_path, config, job_id, arr_metadata)
 
     logger.info("File queued for processing", file=str(local_path), job_id=job_id)
 

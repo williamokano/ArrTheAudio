@@ -1,5 +1,6 @@
 """Command-line interface for ArrTheAudio."""
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -9,6 +10,9 @@ from arrtheaudio import __version__
 from arrtheaudio.config import Config, load_config
 from arrtheaudio.core.pipeline import ProcessingPipeline
 from arrtheaudio.core.scanner import FileScanner
+from arrtheaudio.metadata.cache import TMDBCache
+from arrtheaudio.metadata.tmdb import TMDBClient
+from arrtheaudio.metadata.resolver import MetadataResolver
 from arrtheaudio.utils.logger import setup_logging, get_logger
 
 
@@ -52,8 +56,30 @@ def process(ctx, file):
 
     click.echo(f"Processing: {file}")
 
-    pipeline = ProcessingPipeline(config)
-    result = pipeline.process(file)
+    async def _process():
+        # Initialize TMDB client and resolver if enabled
+        tmdb_client = None
+        if config.tmdb.enabled and config.tmdb.api_key:
+            cache = TMDBCache(Path(config.tmdb.cache_path), config.tmdb.cache_ttl_days)
+            tmdb_client = TMDBClient(config.tmdb.api_key, cache)
+            resolver = MetadataResolver(tmdb_client, config)
+        else:
+            resolver = MetadataResolver(None, config)
+
+        # Resolve metadata from filename
+        metadata = await resolver.resolve(file, arr_metadata=None)
+
+        # Process file with metadata
+        pipeline = ProcessingPipeline(config)
+        result = await pipeline.process(file, metadata)
+
+        # Close TMDB client if created
+        if tmdb_client:
+            await tmdb_client.close()
+
+        return result
+
+    result = asyncio.run(_process())
 
     # Display result
     if result.status == "success":
@@ -123,38 +149,60 @@ def scan(ctx, path, recursive, pattern):
     click.echo("")
 
     # Process each file
-    pipeline = ProcessingPipeline(config)
-    results = {
-        "success": 0,
-        "skipped": 0,
-        "failed": 0,
-        "dry_run": 0,
-        "error": 0,
-    }
+    async def _scan():
+        # Initialize TMDB client and resolver if enabled
+        tmdb_client = None
+        if config.tmdb.enabled and config.tmdb.api_key:
+            cache = TMDBCache(Path(config.tmdb.cache_path), config.tmdb.cache_ttl_days)
+            tmdb_client = TMDBClient(config.tmdb.api_key, cache)
+            resolver = MetadataResolver(tmdb_client, config)
+        else:
+            resolver = MetadataResolver(None, config)
 
-    for idx, file in enumerate(files, 1):
-        click.echo(f"[{idx}/{len(files)}] {file.name}")
+        pipeline = ProcessingPipeline(config)
+        results = {
+            "success": 0,
+            "skipped": 0,
+            "failed": 0,
+            "dry_run": 0,
+            "error": 0,
+        }
 
-        result = pipeline.process(file)
+        for idx, file in enumerate(files, 1):
+            click.echo(f"[{idx}/{len(files)}] {file.name}")
 
-        # Display result
-        if result.status == "success":
-            click.secho(f"  ✓ {result}", fg="green")
-            results["success"] += 1
-        elif result.status == "skipped":
-            click.secho(f"  ⊘ {result}", fg="yellow")
-            results["skipped"] += 1
-        elif result.status == "dry_run":
-            click.secho(f"  ⊙ {result}", fg="cyan")
-            results["dry_run"] += 1
-        elif result.status == "failed":
-            click.secho(f"  ✗ {result}", fg="red")
-            results["failed"] += 1
-        else:  # error
-            click.secho(f"  ✗ {result}", fg="red")
-            results["error"] += 1
+            # Resolve metadata from filename
+            metadata = await resolver.resolve(file, arr_metadata=None)
 
-        click.echo("")
+            # Process file
+            result = await pipeline.process(file, metadata)
+
+            # Display result
+            if result.status == "success":
+                click.secho(f"  ✓ {result}", fg="green")
+                results["success"] += 1
+            elif result.status == "skipped":
+                click.secho(f"  ⊘ {result}", fg="yellow")
+                results["skipped"] += 1
+            elif result.status == "dry_run":
+                click.secho(f"  ⊙ {result}", fg="cyan")
+                results["dry_run"] += 1
+            elif result.status == "failed":
+                click.secho(f"  ✗ {result}", fg="red")
+                results["failed"] += 1
+            else:  # error
+                click.secho(f"  ✗ {result}", fg="red")
+                results["error"] += 1
+
+            click.echo("")
+
+        # Close TMDB client if created
+        if tmdb_client:
+            await tmdb_client.close()
+
+        return results
+
+    results = asyncio.run(_scan())
 
     # Summary
     click.echo("=" * 60)
