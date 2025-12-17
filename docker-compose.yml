@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  arrtheaudio:
+    build: .
+    container_name: arrtheaudio
+    restart: unless-stopped
+
+    # Run in daemon mode
+    command: arrtheaudio --config /config/config.yaml daemon
+
+    environment:
+      # User/Group IDs
+      - PUID=1000
+      - PGID=1000
+
+      # Timezone
+      - TZ=America/New_York
+
+      # TMDB API key (optional, for Phase 3)
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+
+      # Webhook authentication secret (REQUIRED for production)
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-changeme}
+
+      # Log level
+      - LOG_LEVEL=info
+
+    volumes:
+      # Configuration
+      - ./config:/config
+
+      # Media files (adjust to your setup)
+      - /path/to/your/media:/media
+
+      # Logs
+      - ./logs:/logs
+
+    ports:
+      # Webhook API port
+      - "9393:9393"
+
+    networks:
+      - arr-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9393/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  arr-network:
+    external: true
+    # If the network doesn't exist, create it with:
+    # docker network create arr-network

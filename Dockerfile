@@ -1,4 +1,4 @@
-# ArrTheAudio - Dockerfile for Phase 1 (MVP)
+# ArrTheAudio - Dockerfile
 FROM python:3.11-slim
 
 # Install system dependencies (ffmpeg and mkvtoolnix)

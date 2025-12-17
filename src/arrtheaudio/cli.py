@@ -173,6 +173,38 @@ def scan(ctx, path, recursive, pattern):
 
 @cli.command()
 @click.pass_context
+def daemon(ctx):
+    """Start the daemon in webhook receiver mode.
+
+    This starts a FastAPI server that listens for webhooks from Sonarr/Radarr
+    and processes files automatically upon download completion.
+    """
+    config = ctx.obj["config"]
+
+    click.echo("Starting ArrTheAudio daemon...")
+    click.echo(f"Listening on {config.api.host}:{config.api.port}")
+    click.echo(f"Webhook auth: {'enabled' if config.api.webhook_secret else 'disabled'}")
+    click.echo("")
+    click.echo("Endpoints:")
+    click.echo(f"  - Sonarr webhook: http://{config.api.host}:{config.api.port}/webhook/sonarr")
+    click.echo(f"  - Radarr webhook: http://{config.api.host}:{config.api.port}/webhook/radarr")
+    click.echo(f"  - Health check:   http://{config.api.host}:{config.api.port}/health")
+    click.echo(f"  - API docs:       http://{config.api.host}:{config.api.port}/docs")
+    click.echo("")
+    click.echo("Press Ctrl+C to stop")
+    click.echo("")
+
+    from arrtheaudio.daemon import start_daemon
+
+    try:
+        start_daemon(config)
+    except KeyboardInterrupt:
+        click.echo("\n\nDaemon stopped")
+        sys.exit(0)
+
+
+@cli.command()
+@click.pass_context
 def version(ctx):
     """Show version information."""
     click.echo(f"ArrTheAudio v{__version__}")
