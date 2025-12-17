@@ -23,4 +23,4 @@ pytest-cov==4.1.0
 pytest-httpx==0.30.0
 
 # Code quality
-ruff==0.1.9
+ruff==0.14.9
