@@ -1,0 +1,35 @@
+# ArrTheAudio - Test Dockerfile
+# This image includes testing dependencies for running the test suite
+
+FROM python:3.11-slim
+
+# Install system dependencies (ffmpeg and mkvtoolnix)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    mkvtoolnix \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application directory
+WORKDIR /app
+
+# Copy requirements and install ALL dependencies (including test deps)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source
+COPY src/ /app/src/
+COPY tests/ /app/tests/
+COPY pyproject.toml /app/
+
+# Install the application in editable mode
+RUN pip install -e .
+
+# Create directories for config and logs
+RUN mkdir -p /config /logs /media
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+
+# Default command runs tests
+CMD ["pytest", "tests/", "-v", "--cov=arrtheaudio", "--cov-report=term-missing"]

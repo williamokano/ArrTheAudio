@@ -324,5 +324,5 @@ class TestRootEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "ArrTheAudio"
+        assert data["name"] == "ArrTheAudio"
         assert "version" in data
