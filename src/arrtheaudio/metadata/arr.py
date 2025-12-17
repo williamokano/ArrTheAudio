@@ -7,7 +7,7 @@ for use in language resolution and TMDB lookups.
 from typing import Optional
 
 from arrtheaudio.api.models import SonarrWebhookPayload, RadarrWebhookPayload
-from arrtheaudio.models.metadata import MediaMetadata, MediaType
+from arrtheaudio.models.metadata import MediaMetadata
 from arrtheaudio.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,15 +32,12 @@ class ArrMetadataParser:
         )
 
         return MediaMetadata(
-            media_type=MediaType.TV_SHOW,
+            media_type="tv",
             title=payload.series.title,
             year=None,  # Sonarr doesn't provide series year in webhook
             tmdb_id=None,  # Sonarr uses TVDB, not TMDB
             tvdb_id=payload.series.tvdbId,
-            imdb_id=payload.series.imdbId,
             original_language=None,  # Will be resolved via TMDB lookup
-            season_number=payload.episodes[0].seasonNumber if payload.episodes else None,
-            episode_number=payload.episodes[0].episodeNumber if payload.episodes else None,
         )
 
     def parse_radarr(self, payload: RadarrWebhookPayload) -> MediaMetadata:
@@ -59,15 +56,12 @@ class ArrMetadataParser:
         )
 
         return MediaMetadata(
-            media_type=MediaType.MOVIE,
+            media_type="movie",
             title=payload.movie.title,
             year=payload.movie.year,
             tmdb_id=payload.movie.tmdbId,
             tvdb_id=None,
-            imdb_id=payload.movie.imdbId,
             original_language=None,  # Will be resolved via TMDB lookup
-            season_number=None,
-            episode_number=None,
         )
 
     def extract_file_path_sonarr(self, payload: SonarrWebhookPayload) -> Optional[str]:
