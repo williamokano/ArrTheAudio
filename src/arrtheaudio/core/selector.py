@@ -7,6 +7,7 @@ from typing import Optional
 from arrtheaudio.config import Config, PathOverride
 from arrtheaudio.models.metadata import MediaMetadata
 from arrtheaudio.models.track import AudioTrack
+from arrtheaudio.utils.language import normalize_language_code
 from arrtheaudio.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -107,8 +108,11 @@ class TrackSelector:
 
         # Rule 1: Prefer original language if known
         if metadata and metadata.original_language:
+            # Normalize original language code (TMDB uses 2-letter, tracks use 3-letter)
+            normalized_original = normalize_language_code(metadata.original_language)
+
             for track in tracks:
-                if track.language == metadata.original_language:
+                if track.language == normalized_original:
                     logger.info(
                         "Selected original language track",
                         file=str(file_path),
@@ -116,6 +120,8 @@ class TrackSelector:
                         track_index=track.index,
                         selection_method="original_language",
                         metadata_source=metadata.source,
+                        tmdb_code=metadata.original_language,
+                        normalized_code=normalized_original,
                     )
                     return track
 
@@ -123,6 +129,7 @@ class TrackSelector:
                 "Original language not found in tracks",
                 file=str(file_path),
                 original_language=metadata.original_language,
+                normalized_original=normalized_original,
                 available_languages=[t.language for t in tracks],
             )
 
