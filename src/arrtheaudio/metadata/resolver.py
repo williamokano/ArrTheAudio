@@ -93,6 +93,7 @@ class MetadataResolver:
         - tmdb_id: TMDB ID (optional)
         - tvdb_id: TVDB ID (optional, for TV shows)
         - title: Show/movie title (optional)
+        - original_language: Original language name (e.g., "Japanese") from Sonarr v4
 
         Args:
             arr_metadata: Metadata from Sonarr/Radarr webhook
@@ -100,20 +101,41 @@ class MetadataResolver:
         Returns:
             MediaMetadata if successful, None otherwise
         """
-        if not self.tmdb_client:
-            return None
-
-        # Extract IDs from Arr
+        # Extract fields from Arr
         tmdb_id = arr_metadata.get("tmdb_id")
         tvdb_id = arr_metadata.get("tvdb_id")
         media_type = arr_metadata.get("media_type")  # "tv" or "movie"
         title = arr_metadata.get("title")
+        original_language = arr_metadata.get("original_language")  # From Sonarr v4
 
         if not media_type:
             logger.warning("Arr metadata missing media_type")
             return None
 
-        # Lookup on TMDB
+        # If Sonarr/Radarr provided the original language, use it directly
+        if original_language:
+            logger.info(
+                "Using original language from Arr webhook",
+                language=original_language,
+                source="arr",
+            )
+            # Convert language name to ISO 639-2 code
+            from arrtheaudio.utils.language import language_name_to_code
+
+            language_code = language_name_to_code(original_language)
+            return MediaMetadata(
+                media_type=media_type,
+                title=title,
+                tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
+                original_language=language_code,
+                source="arr",
+            )
+
+        # Otherwise, lookup on TMDB if enabled
+        if not self.tmdb_client:
+            return None
+
         try:
             if media_type == "tv":
                 tmdb_data = await self.tmdb_client.get_tv_show(

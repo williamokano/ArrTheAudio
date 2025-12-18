@@ -6,13 +6,22 @@ from pydantic import BaseModel, Field
 
 
 # Nested models for Sonarr webhook
+class SonarrLanguage(BaseModel):
+    """Sonarr language information."""
+
+    id: int
+    name: str
+
+
 class SonarrSeries(BaseModel):
     """Sonarr series information."""
 
     id: int
     title: str
     tvdbId: Optional[int] = None
+    tmdbId: Optional[int] = None
     imdbId: Optional[str] = None
+    originalLanguage: Optional[SonarrLanguage] = None
 
 
 class SonarrEpisode(BaseModel):
@@ -21,6 +30,14 @@ class SonarrEpisode(BaseModel):
     id: int
     seasonNumber: int
     episodeNumber: int
+    title: Optional[str] = None
+
+
+class SonarrMediaInfo(BaseModel):
+    """Sonarr media info."""
+
+    audioLanguages: Optional[List[str]] = None
+    subtitles: Optional[List[str]] = None
 
 
 class SonarrEpisodeFile(BaseModel):
@@ -28,6 +45,10 @@ class SonarrEpisodeFile(BaseModel):
 
     id: int
     path: str
+    relativePath: Optional[str] = None
+    quality: Optional[str] = None
+    languages: Optional[List[SonarrLanguage]] = None
+    mediaInfo: Optional[SonarrMediaInfo] = None
 
 
 class SonarrWebhookPayload(BaseModel):
@@ -36,7 +57,9 @@ class SonarrWebhookPayload(BaseModel):
     eventType: str = Field(..., alias="eventType")
     series: SonarrSeries
     episodes: Optional[List[SonarrEpisode]] = None
-    episodeFile: Optional[SonarrEpisodeFile] = None
+    episodeFiles: Optional[List[SonarrEpisodeFile]] = None  # Note: plural!
+    sourcePath: Optional[str] = None
+    destinationPath: Optional[str] = None
 
     @property
     def event_type(self) -> str:
@@ -54,9 +77,23 @@ class SonarrWebhookPayload(BaseModel):
         return self.series.tvdbId if self.series else None
 
     @property
+    def series_tmdb_id(self) -> Optional[int]:
+        """Get TMDB ID."""
+        return self.series.tmdbId if self.series else None
+
+    @property
     def episode_file_path(self) -> Optional[str]:
-        """Get episode file path."""
-        return self.episodeFile.path if self.episodeFile else None
+        """Get episode file path (from first file in array)."""
+        if self.episodeFiles and len(self.episodeFiles) > 0:
+            return self.episodeFiles[0].path
+        return None
+
+    @property
+    def original_language(self) -> Optional[str]:
+        """Get original language name from series."""
+        if self.series and self.series.originalLanguage:
+            return self.series.originalLanguage.name
+        return None
 
     class Config:
         populate_by_name = True

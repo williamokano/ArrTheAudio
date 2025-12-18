@@ -148,7 +148,9 @@ async def sonarr_webhook(
     arr_metadata = {
         "media_type": "tv",
         "tvdb_id": payload.series_tvdb_id,
+        "tmdb_id": payload.series_tmdb_id,  # Sonarr v4 provides TMDB ID
         "title": payload.series_title,
+        "original_language": payload.original_language,  # From Sonarr's series data
     }
 
     # Generate job ID and queue for processing
