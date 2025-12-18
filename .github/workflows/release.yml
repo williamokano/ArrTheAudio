@@ -23,7 +23,7 @@ on:
 
 env:
   DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/arrtheaudio
-  PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   test:
@@ -214,7 +214,7 @@ jobs:
             echo "docker pull ${{ env.DOCKER_IMAGE }}:latest"
             echo '```'
             echo ""
-            echo "**Supported Platforms:** linux/amd64, linux/arm64, linux/arm/v7"
+            echo "**Supported Platforms:** linux/amd64, linux/arm64"
             echo ""
             echo "## Installation"
             echo ""
