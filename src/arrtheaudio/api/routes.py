@@ -229,6 +229,7 @@ async def radarr_webhook(
         "media_type": "movie",
         "tmdb_id": payload.movie_tmdb_id,
         "title": payload.movie_title,
+        "original_language": payload.original_language,  # From Radarr v4 movie data
     }
 
     # Generate job ID and queue for processing

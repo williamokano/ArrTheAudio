@@ -108,13 +108,25 @@ class RadarrMovie(BaseModel):
     year: Optional[int] = None
     tmdbId: Optional[int] = None
     imdbId: Optional[str] = None
+    originalLanguage: Optional[SonarrLanguage] = None  # Radarr v4 provides this
+
+
+class RadarrMediaInfo(BaseModel):
+    """Radarr media info."""
+
+    audioLanguages: Optional[List[str]] = None
+    subtitles: Optional[List[str]] = None
 
 
 class RadarrMovieFile(BaseModel):
     """Radarr movie file information."""
 
     id: int
-    relativePath: str
+    path: str
+    relativePath: Optional[str] = None
+    quality: Optional[str] = None
+    languages: Optional[List[SonarrLanguage]] = None
+    mediaInfo: Optional[RadarrMediaInfo] = None
 
 
 class RadarrWebhookPayload(BaseModel):
@@ -142,7 +154,14 @@ class RadarrWebhookPayload(BaseModel):
     @property
     def movie_file_path(self) -> Optional[str]:
         """Get movie file path."""
-        return self.movieFile.relativePath if self.movieFile else None
+        return self.movieFile.path if self.movieFile else None
+
+    @property
+    def original_language(self) -> Optional[str]:
+        """Get original language name from movie."""
+        if self.movie and self.movie.originalLanguage:
+            return self.movie.originalLanguage.name
+        return None
 
     class Config:
         populate_by_name = True
