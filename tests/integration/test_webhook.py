@@ -71,7 +71,12 @@ class TestSonarrWebhook:
                 "id": 1,
                 "title": "Test Show",
                 "tvdbId": 12345,
+                "tmdbId": 67890,
                 "imdbId": "tt1234567",
+                "originalLanguage": {
+                    "id": 1,
+                    "name": "English"
+                }
             },
             "episodes": [
                 {
@@ -80,10 +85,13 @@ class TestSonarrWebhook:
                     "episodeNumber": 1,
                 }
             ],
-            "episodeFile": {
-                "id": 1,
-                "path": "/tv/test_show/S01E01.mkv",
-            },
+            "episodeFiles": [
+                {
+                    "id": 1,
+                    "path": "/tv/test_show/S01E01.mkv",
+                    "relativePath": "test_show/S01E01.mkv",
+                }
+            ],
         }
 
         signature = create_signature(payload, "test_secret_key")
@@ -111,7 +119,7 @@ class TestSonarrWebhook:
             "eventType": "Download",
             "series": {"id": 1, "title": "Test", "tvdbId": 12345},
             "episodes": [{"id": 1, "seasonNumber": 1, "episodeNumber": 1}],
-            "episodeFile": {"id": 1, "path": "/tv/test.mkv"},
+            "episodeFiles": [{"id": 1, "path": "/tv/test.mkv"}],
         }
 
         response = test_client.post(
@@ -129,7 +137,7 @@ class TestSonarrWebhook:
             "eventType": "Download",
             "series": {"id": 1, "title": "Test", "tvdbId": 12345},
             "episodes": [{"id": 1, "seasonNumber": 1, "episodeNumber": 1}],
-            "episodeFile": {"id": 1, "path": "/tv/test.mkv"},
+            "episodeFiles": [{"id": 1, "path": "/tv/test.mkv"}],
         }
 
         response = test_client.post("/webhook/sonarr", json=payload)
@@ -143,7 +151,7 @@ class TestSonarrWebhook:
             "eventType": "Download",
             "series": {"id": 1, "title": "Test", "tvdbId": 12345},
             "episodes": [{"id": 1, "seasonNumber": 1, "episodeNumber": 1}],
-            "episodeFile": {"id": 1, "path": "/tv/nonexistent/S01E01.mkv"},
+            "episodeFiles": [{"id": 1, "path": "/tv/nonexistent/S01E01.mkv"}],
         }
 
         signature = create_signature(payload, "test_secret_key")
@@ -165,7 +173,7 @@ class TestSonarrWebhook:
             "eventType": "Download",
             "series": {"id": 1, "title": "Test", "tvdbId": 12345},
             "episodes": [{"id": 1, "seasonNumber": 1, "episodeNumber": 1}],
-            # No episodeFile
+            # No episodeFiles
         }
 
         signature = create_signature(payload, "test_secret_key")
@@ -195,10 +203,15 @@ class TestRadarrWebhook:
                 "year": 2023,
                 "tmdbId": 12345,
                 "imdbId": "tt1234567",
+                "originalLanguage": {
+                    "id": 1,
+                    "name": "English"
+                }
             },
             "movieFile": {
                 "id": 1,
-                "relativePath": "/movies/test_show/S01E01.mkv",  # Using existing test file path
+                "path": "/movies/test_show/S01E01.mkv",  # Using existing test file path
+                "relativePath": "test_show/S01E01.mkv",
             },
         }
 
@@ -226,7 +239,7 @@ class TestRadarrWebhook:
         payload = {
             "eventType": "Download",
             "movie": {"id": 1, "title": "Test", "year": 2023, "tmdbId": 12345},
-            "movieFile": {"id": 1, "relativePath": "/movies/test.mkv"},
+            "movieFile": {"id": 1, "path": "/movies/test.mkv"},
         }
 
         response = test_client.post(
@@ -243,7 +256,7 @@ class TestRadarrWebhook:
         payload = {
             "eventType": "Download",
             "movie": {"id": 1, "title": "Test", "year": 2023, "tmdbId": 12345},
-            "movieFile": {"id": 1, "relativePath": "/movies/nonexistent.mkv"},
+            "movieFile": {"id": 1, "path": "/movies/nonexistent.mkv"},
         }
 
         signature = create_signature(payload, "test_secret_key")
@@ -289,7 +302,7 @@ class TestPathMapping:
             "eventType": "Download",
             "series": {"id": 1, "title": "Test", "tvdbId": 12345},
             "episodes": [{"id": 1, "seasonNumber": 1, "episodeNumber": 1}],
-            "episodeFile": {"id": 1, "path": "/tv/mapped_show/S01E01.mkv"},
+            "episodeFiles": [{"id": 1, "path": "/tv/mapped_show/S01E01.mkv"}],
         }
 
         signature = create_signature(payload, "test_secret_key")
