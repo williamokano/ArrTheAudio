@@ -149,7 +149,10 @@ class ProcessingPipeline:
                 )
 
             # Get executor and execute
-            executor = get_executor(container_type.value)
+            executor = get_executor(
+                container_type.value,
+                timeout_seconds=self.config.processing.timeout_seconds
+            )
             success = executor.set_default_audio(file_path, selected_track.index)
 
             duration_ms = int((time.time() - start_time) * 1000)

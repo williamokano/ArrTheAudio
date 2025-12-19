@@ -9,7 +9,7 @@ This directory contains detailed documentation for each development phase of Arr
 | [Phase 1](#phase-1-mvp-core) | ✅ Complete | 1-2 weeks | Core MKV processing with CLI |
 | [Phase 2](#phase-2-daemon--webhooks) | ✅ Complete | 2-3 weeks | Webhook daemon for Arr integration |
 | [Phase 3](#phase-3-tmdb-integration) | ✅ Complete | 1-2 weeks | Automatic language detection via TMDB |
-| [Phase 4](#phase-4-mp4-support) | 🚧 Planned | 1 week | MP4 container format support |
+| [Phase 4](#phase-4-mp4-support) | ✅ Complete | 1 week | MP4 container format support |
 | [Phase 5](#phase-5-batch-processing-api) | 🚧 Planned | 1-2 weeks | REST API for batch job management |
 | [Phase 6](#phase-6-production-hardening) | 🚧 Planned | 2-3 weeks | Monitoring, metrics, and reliability |
 
@@ -158,11 +158,11 @@ tmdb:
 
 ## Phase 4: MP4 Support
 
-**Status:** 🚧 Planned
+**Status:** ✅ Complete
 **Documentation:** [PHASE_4_MP4_SUPPORT.md](./PHASE_4_MP4_SUPPORT.md)
-**Estimated Duration:** 1 week
+**Completed:** December 2024
 
-### What Will Be Built
+### What Was Built
 
 Support for MP4 container format in addition to MKV.
 
@@ -443,11 +443,11 @@ Phase 6 (Production Hardening) ← requires all previous phases
 - **Phase 1** - Completed: December 2024
 - **Phase 2** - Completed: December 2024
 - **Phase 3** - Completed: December 2024
+- **Phase 4** - Completed: December 2024
 
 ### Projected
 
-- **Phase 4** - Target: Q1 2025
-- **Phase 5** - Target: Q2 2025
+- **Phase 5** - Target: Q1 2025
 - **Phase 6** - Target: Q2 2025
 
 **Note:** Timeline is approximate and may change based on contributor availability and community feedback.
