@@ -8,7 +8,7 @@ This directory contains detailed documentation for each development phase of Arr
 |-------|--------|----------|-------------|
 | [Phase 1](#phase-1-mvp-core) | ✅ Complete | 1-2 weeks | Core MKV processing with CLI |
 | [Phase 2](#phase-2-daemon--webhooks) | ✅ Complete | 2-3 weeks | Webhook daemon for Arr integration |
-| [Phase 3](#phase-3-tmdb-integration) | 🚧 Planned | 1-2 weeks | Automatic language detection via TMDB |
+| [Phase 3](#phase-3-tmdb-integration) | ✅ Complete | 1-2 weeks | Automatic language detection via TMDB |
 | [Phase 4](#phase-4-mp4-support) | 🚧 Planned | 1 week | MP4 container format support |
 | [Phase 5](#phase-5-batch-processing-api) | 🚧 Planned | 1-2 weeks | REST API for batch job management |
 | [Phase 6](#phase-6-production-hardening) | 🚧 Planned | 2-3 weeks | Monitoring, metrics, and reliability |
@@ -108,11 +108,11 @@ api:
 
 ## Phase 3: TMDB Integration
 
-**Status:** 🚧 Planned
+**Status:** ✅ Complete
 **Documentation:** [PHASE_3_TMDB_INTEGRATION.md](./PHASE_3_TMDB_INTEGRATION.md)
-**Estimated Duration:** 1-2 weeks
+**Completed:** December 2024
 
-### What Will Be Built
+### What Was Built
 
 Automatic original language detection using The Movie Database (TMDB) API.
 
@@ -442,10 +442,10 @@ Phase 6 (Production Hardening) ← requires all previous phases
 
 - **Phase 1** - Completed: December 2024
 - **Phase 2** - Completed: December 2024
+- **Phase 3** - Completed: December 2024
 
 ### Projected
 
-- **Phase 3** - Target: Q1 2025
 - **Phase 4** - Target: Q1 2025
 - **Phase 5** - Target: Q2 2025
 - **Phase 6** - Target: Q2 2025
