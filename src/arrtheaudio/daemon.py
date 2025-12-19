@@ -57,8 +57,8 @@ class DaemonOrchestrator:
                 self.app,
                 host=self.config.api.host,
                 port=self.config.api.port,
-                log_config=None,  # Use our own logging
-                access_log=False,  # Disable uvicorn access log (we log in routes)
+                log_level="info",  # Set log level for uvicorn
+                access_log=True,  # Enable access logs for debugging webhook issues
             )
         except KeyboardInterrupt:
             logger.info("Daemon interrupted by user")

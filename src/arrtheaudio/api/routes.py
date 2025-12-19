@@ -108,10 +108,15 @@ async def sonarr_webhook(
     config = app_state.config
 
     logger.info(
-        "Sonarr webhook received",
+        "Sonarr webhook received and validated",
         series_title=payload.series_title,
+        series_id=payload.series.id,
         file_path=payload.episode_file_path,
         event_type=payload.event_type,
+        tvdb_id=payload.series_tvdb_id,
+        tmdb_id=payload.series_tmdb_id,
+        episode_count=len(payload.episodeFiles) if payload.episodeFiles else 0,
+        original_language=payload.original_language,
     )
 
     # Verify webhook signature if configured
@@ -188,10 +193,14 @@ async def radarr_webhook(
     config = app_state.config
 
     logger.info(
-        "Radarr webhook received",
+        "Radarr webhook received and validated",
         movie_title=payload.movie_title,
+        movie_id=payload.movie.id,
         file_path=payload.movie_file_path,
         event_type=payload.event_type,
+        tmdb_id=payload.movie_tmdb_id,
+        year=payload.movie.year if hasattr(payload.movie, "year") else None,
+        original_language=payload.original_language,
     )
 
     # Verify webhook signature if configured
