@@ -1,44 +1,409 @@
-# Phase 5: Batch Processing API
+# Phase 5: Unified Job Queue & Batch Processing
 
 **Status:** 🚧 Planned
-**Goal:** Add REST API for batch processing and job management
-**Estimated Duration:** 1-2 weeks
+**Goal:** Add persistent job queue system with batch processing and monitoring APIs
+**Estimated Duration:** 2-3 weeks
+**Dependencies:** Phases 1-4 complete
 
 ## Overview
 
-Phase 5 extends the daemon with a full-featured batch processing API. While Phase 2 added webhook support for real-time processing, Phase 5 adds the ability to manually trigger scans, monitor progress, and manage batch jobs through REST endpoints.
+Phase 5 implements a **unified job queue system** that handles both webhook-triggered and manual batch processing through a single persistent queue with concurrent workers.
+
+**Key Changes:**
+- **Fixes webhook multi-file bug** - Currently only processes first file from Sonarr/Radarr
+- **Adds manual batch processing** - Scan existing libraries on demand
+- **Persistent job queue** - Survives daemon restarts
+- **Concurrent workers** - Process multiple files in parallel
+- **Resource management** - Limits MP4 concurrent jobs for disk space safety
+- **Full monitoring APIs** - Track queue, jobs, batches, and statistics
+
+## Architecture
+
+### Core Concept: Everything is a Job
+
+```
+Single Job = Process 1 File
+
+Webhook with 3 files → 3 jobs (linked by webhook_id)
+Manual scan of 100 files → 100 jobs (linked by batch_id)
+```
+
+### Job Model
+
+```python
+Job {
+  "job_id": "job_abc123",
+  "file_path": "/media/Show/S01E01.mkv",
+  "status": "queued",  # queued, running, completed, failed, cancelled
+  "priority": "high",  # high (webhooks), normal (manual), low (retry)
+  "container": "mkv",  # mkv or mp4
+
+  # Linking metadata
+  "webhook_id": "webhook_xyz789",  # Links jobs from same webhook
+  "batch_id": None,                # Or batch_id for manual scans
+  "source": "sonarr",              # sonarr, radarr, manual
+
+  # Timestamps
+  "created_at": "2024-12-19T10:30:00Z",
+  "started_at": "2024-12-19T10:30:05Z",
+  "completed_at": "2024-12-19T10:30:10Z",
+
+  # Result
+  "result": "success",  # success, failed, skipped
+  "reason": None,       # Reason for skip/failure
+  "duration_ms": 5234
+}
+```
+
+### Queue System
+
+**Single Persistent Queue (SQLite)**
+- One queue for all sources (webhooks + manual batches)
+- Jobs ordered by: priority (high > normal > low), then FIFO
+- Survives daemon restarts
+- Concurrent workers pull from queue
+
+**Queue Example:**
+```
+┌─────────────────────────────────────┐
+│ Priority Queue                       │
+├─────────────────────────────────────┤
+│ [HIGH] job_1 (sonarr webhook)      │
+│ [HIGH] job_2 (sonarr webhook)      │
+│ [HIGH] job_3 (radarr webhook)      │
+│ [NORMAL] job_4 (manual batch)      │
+│ [NORMAL] job_5 (manual batch)      │
+│ [LOW] job_6 (retry)                │
+└─────────────────────────────────────┘
+         ↓
+   ┌─────────┬─────────┐
+   │ Worker 1│ Worker 2│  (Configurable: 1-8 workers)
+   └─────────┴─────────┘
+```
+
+### Worker Pool
+
+**Configurable Concurrency:**
+```yaml
+processing:
+  worker_count: 2              # Number of concurrent workers (default: 2)
+  max_mp4_concurrent: 1        # Max MP4 jobs at once (disk space safety)
+  max_queue_size: 100          # Reject new jobs if queue is full
+  timeout_seconds: 300         # Per-job timeout
+  retry_attempts: 2            # Retry failed jobs
+  retry_delay_seconds: 60      # Wait before retry
+```
+
+**MP4 Resource Management:**
+- Before starting MP4 job: check `free_space > (file_size * 2)`
+- If insufficient: mark job as `waiting_for_space`, retry every 60s
+- OR: Set `max_mp4_concurrent: 1` to serialize MP4 processing
+- MKV jobs can run concurrently (no disk space concern)
 
 ## Features
 
-### 1. Batch Processing Endpoint
-- POST `/batch` - Start new batch scan
-- Support for path patterns and filters
-- Configurable options (dry-run, recursive, etc.)
-- Background job execution
+### 1. Multi-File Webhook Support (Bug Fix)
 
-### 2. Job Management
-- GET `/jobs` - List all jobs
-- GET `/jobs/{id}` - Get job details
-- DELETE `/jobs/{id}` - Cancel job
-- Job status tracking (queued, running, completed, failed)
+**Current Behavior (Bug):**
+- Sonarr sends 3 files → Only first file processed
+- Files 2 and 3 are silently dropped
 
-### 3. Job Queue
-- Persistent job queue (Redis or SQLite)
-- Concurrent job execution with worker pool
-- Priority support (webhook > manual batch)
-- Job retry on failure
+**New Behavior:**
+```python
+POST /webhook/sonarr
+{
+  "episodeFiles": [
+    {"path": "/media/Show/S01E01.mkv"},
+    {"path": "/media/Show/S01E02.mkv"},
+    {"path": "/media/Show/S01E03.mkv"}
+  ]
+}
 
-### 4. Progress Tracking
-- Real-time progress updates
-- Files processed / total files
-- Success / failure counts
-- Estimated time remaining
+# Response:
+{
+  "status": "accepted",
+  "webhook_id": "webhook_xyz789",
+  "job_ids": ["job_1", "job_2", "job_3"],
+  "file_count": 3,
+  "message": "3 files queued for processing"
+}
+```
 
-### 5. Job History
-- Store completed job results
-- Query historical jobs
-- Job logs and errors
-- Cleanup old jobs
+**What Happens:**
+1. Create 3 separate jobs with same `webhook_id`
+2. Add all to queue with `priority=high`
+3. Return immediately (async processing)
+4. Workers process them concurrently
+
+### 2. Manual Batch Processing
+
+**Start Batch Scan:**
+```python
+POST /batch
+{
+  "path": "/media/tv",
+  "recursive": true,
+  "pattern": "**/*.mkv",  # Optional glob pattern
+  "dry_run": false,
+  "priority": "normal"    # normal or low
+}
+
+# Response:
+{
+  "status": "started",
+  "batch_id": "batch_abc123",
+  "estimated_files": 120,
+  "message": "Batch scan started"
+}
+```
+
+**What Happens:**
+1. Scan directory for matching files
+2. Create one job per file (linked by `batch_id`)
+3. Add all to queue with specified priority
+4. Return immediately
+5. Workers process them as they become available
+
+### 3. Job Management APIs
+
+**Get Queue Status:**
+```python
+GET /queue
+
+{
+  "total_jobs": 45,
+  "queued": 40,
+  "running": 2,
+  "completed_today": 150,
+  "failed_today": 3,
+  "workers": {
+    "total": 2,
+    "active": 2,
+    "idle": 0
+  },
+  "current_jobs": [
+    {
+      "job_id": "job_1",
+      "status": "running",
+      "file": "/media/Show/S01E01.mkv",
+      "container": "mkv",
+      "started_at": "2024-12-19T10:30:00Z",
+      "worker_id": 1
+    },
+    {
+      "job_id": "job_2",
+      "status": "running",
+      "file": "/media/Movie.mp4",
+      "container": "mp4",
+      "started_at": "2024-12-19T10:30:05Z",
+      "worker_id": 2
+    }
+  ],
+  "next_jobs": [
+    {
+      "job_id": "job_3",
+      "status": "queued",
+      "file": "/media/Show/S01E02.mkv",
+      "priority": "high",
+      "position": 1
+    }
+  ]
+}
+```
+
+**Get Specific Job:**
+```python
+GET /jobs/job_abc123
+
+{
+  "job_id": "job_abc123",
+  "status": "completed",
+  "file_path": "/media/Show/S01E01.mkv",
+  "container": "mkv",
+  "priority": "high",
+  "source": "sonarr",
+  "webhook_id": "webhook_xyz789",
+  "created_at": "2024-12-19T10:29:55Z",
+  "started_at": "2024-12-19T10:30:00Z",
+  "completed_at": "2024-12-19T10:30:15Z",
+  "duration_ms": 15234,
+  "result": "success",
+  "track_changed": true,
+  "selected_track": {
+    "index": 1,
+    "language": "eng"
+  }
+}
+```
+
+**List Jobs (with filters):**
+```python
+GET /jobs?status=running
+GET /jobs?webhook_id=webhook_xyz789
+GET /jobs?batch_id=batch_abc123
+GET /jobs?source=sonarr
+GET /jobs?limit=50&offset=0
+
+{
+  "total": 150,
+  "limit": 50,
+  "offset": 0,
+  "jobs": [...]
+}
+```
+
+**Cancel Job:**
+```python
+DELETE /jobs/job_abc123
+
+{
+  "status": "cancelled",
+  "job_id": "job_abc123",
+  "message": "Job cancelled"
+}
+```
+
+### 4. Batch Progress Tracking
+
+**Get Batch Progress:**
+```python
+GET /batch/batch_abc123
+
+{
+  "batch_id": "batch_abc123",
+  "status": "running",
+  "path": "/media/tv",
+  "recursive": true,
+  "priority": "normal",
+  "created_at": "2024-12-19T10:00:00Z",
+  "started_at": "2024-12-19T10:00:05Z",
+  "progress": {
+    "total_files": 120,
+    "completed": 45,
+    "running": 2,
+    "queued": 73,
+    "failed": 0,
+    "skipped": 5,
+    "progress_percent": 37.5,
+    "eta_seconds": 225
+  },
+  "results": {
+    "success": 40,
+    "failed": 0,
+    "skipped": 5,
+    "track_changes": 38
+  }
+}
+```
+
+**Cancel Batch:**
+```python
+DELETE /batch/batch_abc123
+
+{
+  "status": "cancelling",
+  "batch_id": "batch_abc123",
+  "cancelled_jobs": 73,  # Jobs that were queued
+  "message": "Batch cancelled, running jobs will complete"
+}
+```
+
+### 5. Webhook Progress Tracking
+
+**Get All Jobs from Webhook:**
+```python
+GET /webhook/webhook_xyz789
+
+{
+  "webhook_id": "webhook_xyz789",
+  "source": "sonarr",
+  "series_title": "My Show",
+  "created_at": "2024-12-19T10:29:55Z",
+  "total_jobs": 3,
+  "completed": 2,
+  "running": 1,
+  "failed": 0,
+  "jobs": [
+    {
+      "job_id": "job_1",
+      "status": "completed",
+      "file": "/media/Show/S01E01.mkv",
+      "duration_ms": 5234
+    },
+    {
+      "job_id": "job_2",
+      "status": "running",
+      "file": "/media/Show/S01E02.mkv"
+    },
+    {
+      "job_id": "job_3",
+      "status": "queued",
+      "file": "/media/Show/S01E03.mkv"
+    }
+  ]
+}
+```
+
+### 6. Statistics & Monitoring
+
+**Get Overall Stats:**
+```python
+GET /stats
+
+{
+  "queue": {
+    "size": 45,
+    "queued": 40,
+    "running": 2,
+    "waiting_for_space": 3
+  },
+  "workers": {
+    "total": 2,
+    "active": 2,
+    "idle": 0
+  },
+  "today": {
+    "jobs_completed": 150,
+    "jobs_failed": 3,
+    "success_rate": 98.0,
+    "avg_duration_ms": 8500
+  },
+  "lifetime": {
+    "total_jobs": 5420,
+    "total_files_processed": 5200,
+    "total_time_hours": 12.5
+  },
+  "containers": {
+    "mkv_processed": 4800,
+    "mp4_processed": 400,
+    "avg_mkv_ms": 300,
+    "avg_mp4_ms": 25000
+  }
+}
+```
+
+### 7. Job History & Cleanup
+
+**Job Retention:**
+```yaml
+processing:
+  job_history_days: 30  # Keep completed jobs for 30 days
+  failed_job_days: 90   # Keep failed jobs longer for debugging
+  cleanup_interval_hours: 24
+```
+
+**Manual Cleanup:**
+```bash
+# Via API
+POST /admin/cleanup
+{
+  "older_than_days": 30,
+  "statuses": ["completed", "cancelled"]
+}
+
+# Via CLI
+arrtheaudio admin cleanup --older-than 30d
+```
 
 ## API Endpoints
 
@@ -630,8 +995,124 @@ jobs:
 4. Add statistics endpoint
 5. Integration tests
 
-### Step 6: Integration (1 day)
-1. Update app startup to start workers
+### Step 6: Webhook Multi-File Support (1 day)
+1. Update webhook routes to process all files in array
+2. Return webhook_id and job_ids array
+3. Update response models
+4. Integration tests with multi-file payloads
+
+### Step 7: Integration (1 day)
+1. Update app startup to initialize job queue
+2. Start worker pool on daemon start
+3. Graceful shutdown of workers
+4. Update health check to include queue status
+
+### Step 8: Testing (2 days)
+1. Unit tests for all job components
+2. Integration tests for batch API
+3. Integration tests for multi-file webhooks
+4. Load testing with large queues
+5. Test worker concurrency
+6. Test MP4 resource limiting
+
+### Step 9: Documentation (1 day)
+1. Update README with batch processing examples
+2. Add API documentation
+3. Update troubleshooting guide
+4. Document queue management best practices
+
+## Testing Requirements
+
+### Unit Tests
+- Job models and calculations
+- Job storage CRUD operations
+- Queue enqueue/dequeue logic
+- Worker job processing
+- API endpoint validation
+
+### Integration Tests
+- End-to-end batch processing
+- Multi-file webhook processing
+- Job cancellation
+- Queue overflow handling
+- Worker concurrency
+- MP4 resource limiting
+
+### Load Testing
+```bash
+# Test with large queue
+python scripts/test-batch-load.py --files 1000 --workers 4
+
+# Test webhook flood
+python scripts/test-webhook-flood.py --count 100
+```
+
+## Success Criteria
+
+- [ ] Multi-file webhooks process all files
+- [ ] Manual batch scans work correctly
+- [ ] Persistent queue survives restarts
+- [ ] Workers process jobs concurrently
+- [ ] MP4 resource limits enforced
+- [ ] Progress tracking accurate
+- [ ] Job cancellation works
+- [ ] All tests pass with >70% coverage
+- [ ] Documentation complete
+
+## Breaking Changes
+
+**Webhook Response Format Change:**
+
+**Before:**
+```json
+{
+  "status": "accepted",
+  "job_id": "job_abc123",
+  "message": "File queued for processing"
+}
+```
+
+**After:**
+```json
+{
+  "status": "accepted",
+  "webhook_id": "webhook_xyz789",
+  "job_ids": ["job_1", "job_2", "job_3"],
+  "file_count": 3,
+  "message": "3 files queued for processing"
+}
+```
+
+**Migration:**
+- Single-file webhooks still work (job_ids will have 1 element)
+- Clients should check `file_count` or `job_ids` length
+- `webhook_id` can be used to track all related jobs
+
+## Performance Expectations
+
+| Operation | Expected Time | Notes |
+|-----------|---------------|-------|
+| Queue 100 jobs | <1 second | Just adding to queue |
+| Process 100 MKV files (2 workers) | ~15 minutes | 300ms/file, 50 per worker |
+| Process 100 MP4 files (1 worker) | ~40 minutes | 25s/file, serialized |
+| Batch scan 1000 files | ~1 second | Just discovery |
+
+## Rollback Plan
+
+If Phase 5 causes issues:
+1. Set `processing.worker_count: 0` to disable background workers
+2. Webhooks will process files immediately (blocking, like Phase 2)
+3. Batch API will return 503 Service Unavailable
+4. Queue will remain but not process
+
+## Future Enhancements (Phase 6+)
+
+- WebSocket for real-time progress updates
+- Distributed workers across multiple nodes
+- Redis instead of SQLite for multi-instance support
+- Job scheduling (cron-like batches)
+- Job dependencies (process file A before file B)
+- Bandwidth throttling for network storage
 2. Add graceful shutdown
 3. Update health check to include job stats
 4. End-to-end testing

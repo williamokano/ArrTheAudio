@@ -168,28 +168,87 @@ Use the explicit style 'transport=WSGITransport(app=...)' instead.
 
 ---
 
-## Architecture
+## Critical Bugs
 
-### No Concurrent MP4 Processing
+### Webhook Multi-File Bug - Only First File Processed
 
-**Status:** 📋 To Do
-**Priority:** Medium
-**Phase:** 5 (Batch Processing API)
+**Status:** 🐛 **CRITICAL BUG** - Will be fixed in Phase 5
+**Priority:** High
+**Phase:** 5 (Unified Job Queue & Batch Processing)
 
 **Issue:**
-MP4 remuxing is CPU/IO intensive but currently processes one file at a time. With batch operations, multiple MP4 files could be processed in parallel to improve throughput.
+When Sonarr/Radarr sends webhooks with multiple files (e.g., season pack imports, batch imports), **only the first file is processed and the rest are silently dropped**.
 
 **Current Behavior:**
-- Files processed sequentially via BackgroundTasks
-- MP4 remux blocks for 5-30 seconds per file
-- Large batches take a long time
+```python
+# models.py line 84-88
+@property
+def episode_file_path(self) -> Optional[str]:
+    """Get episode file path (from first file in array)."""
+    if self.episodeFiles and len(self.episodeFiles) > 0:
+        return self.episodeFiles[0].path  # ← ONLY FIRST FILE!
+    return None
+```
 
-**Proposed Solution:**
-- Implement worker pool for concurrent processing
-- Limit concurrency based on available CPU cores
-- Queue system for pending jobs (Phase 5 feature)
+**When This Happens:**
+- Batch imports - User manually imports multiple episodes
+- Season packs - Downloading entire seasons
+- Multi-episode files - Files with multiple episodes
+- Re-imports - Replacing multiple existing files
 
-**Effort Estimate:** Part of Phase 5 implementation
+**Example:**
+```json
+// Sonarr sends 3 files
+{
+  "episodeFiles": [
+    {"path": "/media/Show/S01E01.mkv"},  // ← Processed
+    {"path": "/media/Show/S01E02.mkv"},  // ← DROPPED!
+    {"path": "/media/Show/S01E03.mkv"}   // ← DROPPED!
+  ]
+}
+```
+
+**Impact:**
+- User expects all 3 files processed
+- Only 1 file gets audio fixed
+- No error or warning logged
+- Silent data loss
+
+**Fix (Phase 5):**
+- Create one job per file (linked by webhook_id)
+- Process all files via job queue
+- Return array of job_ids
+
+**Related Issues:** Phase 5 implementation
+
+---
+
+## Architecture
+
+### No Concurrent Processing
+
+**Status:** 📋 To Do - **Will be implemented in Phase 5**
+**Priority:** Medium
+**Phase:** 5 (Unified Job Queue & Batch Processing)
+
+**Issue:**
+Files currently processed sequentially via FastAPI BackgroundTasks. MP4 remuxing is CPU/IO intensive and blocks for 5-30 seconds per file. No support for concurrent processing or queue management.
+
+**Current Behavior:**
+- One file at a time via BackgroundTasks
+- MP4 remux blocks for 5-30 seconds
+- No queue, no priority system
+- No progress tracking
+- No way to cancel running operations
+
+**Proposed Solution (Phase 5):**
+- Unified job queue system (SQLite-based)
+- Configurable worker pool (default: 2 workers)
+- Priority system: webhooks (high) > manual batches (normal)
+- MP4 resource limits: `max_mp4_concurrent: 1` for disk space safety
+- Full monitoring APIs
+
+**Effort Estimate:** Core part of Phase 5 implementation (2-3 weeks)
 
 ---
 
