@@ -9,6 +9,20 @@ import structlog
 
 from arrtheaudio.config import LoggingConfig
 
+# Define custom TRACE level (below DEBUG)
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, "TRACE")
+
+
+def trace(self, message, *args, **kwargs):
+    """Log a message with TRACE level."""
+    if self.isEnabledFor(TRACE_LEVEL):
+        self._log(TRACE_LEVEL, message, args, **kwargs)
+
+
+# Add trace method to Logger class
+logging.Logger.trace = trace
+
 
 def setup_logging(config: LoggingConfig) -> None:
     """Configure structured logging.
@@ -47,18 +61,24 @@ def setup_logging(config: LoggingConfig) -> None:
         cache_logger_on_first_use=True,
     )
 
+    # Get log level (handle custom TRACE level)
+    if config.level.lower() == "trace":
+        log_level = TRACE_LEVEL
+    else:
+        log_level = getattr(logging, config.level.upper())
+
     # Configure stdlib logging
     handlers = []
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, config.level.upper()))
+    console_handler.setLevel(log_level)
     handlers.append(console_handler)
 
     # File handler
     try:
         file_handler = logging.FileHandler(config.output, mode="a", encoding="utf-8")
-        file_handler.setLevel(getattr(logging, config.level.upper()))
+        file_handler.setLevel(log_level)
         handlers.append(file_handler)
     except (OSError, PermissionError) as e:
         # If we can't create file handler, just log to console
@@ -66,7 +86,7 @@ def setup_logging(config: LoggingConfig) -> None:
 
     logging.basicConfig(
         format="%(message)s",
-        level=getattr(logging, config.level.upper()),
+        level=log_level,
         handlers=handlers,
         force=True,  # Override any existing configuration
     )

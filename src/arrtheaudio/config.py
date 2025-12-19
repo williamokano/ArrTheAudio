@@ -86,8 +86,9 @@ class LoggingConfig(BaseModel):
     @classmethod
     def validate_level(cls, v: str) -> str:
         """Validate log level."""
-        if v.lower() not in ("debug", "info", "warning", "error", "critical"):
-            raise ValueError("Invalid log level")
+        valid_levels = ("trace", "debug", "info", "warning", "error", "critical")
+        if v.lower() not in valid_levels:
+            raise ValueError(f"Invalid log level. Must be one of: {', '.join(valid_levels)}")
         return v.lower()
 
 
