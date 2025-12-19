@@ -15,7 +15,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         """Log request before processing and response after."""
-        # Only log webhook endpoints
+        # Only log webhook endpoints (exclude health checks)
         if not request.url.path.startswith("/webhook/"):
             return await call_next(request)
 

@@ -317,6 +317,39 @@ async def health_check(request: Request):
     )
 
 
+@router.post("/webhook/test")
+async def test_webhook(request: Request):
+    """Test webhook endpoint - accepts any payload and logs it.
+
+    Useful for debugging webhook delivery and logging.
+
+    Args:
+        request: FastAPI request
+
+    Returns:
+        Echo of received data
+    """
+    body = await request.body()
+
+    try:
+        import json
+        payload = json.loads(body.decode())
+    except Exception:
+        payload = body.decode() if body else None
+
+    logger.info(
+        "Test webhook received",
+        content_type=request.headers.get("content-type"),
+        payload=payload,
+    )
+
+    return {
+        "status": "success",
+        "message": "Test webhook received and logged",
+        "received": payload,
+    }
+
+
 @router.get("/")
 async def root():
     """Root endpoint."""
@@ -328,6 +361,7 @@ async def root():
             "health": "/health",
             "sonarr_webhook": "/webhook/sonarr",
             "radarr_webhook": "/webhook/radarr",
+            "test_webhook": "/webhook/test",
             "docs": "/docs",
         },
     }
