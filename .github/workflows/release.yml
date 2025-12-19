@@ -114,14 +114,16 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
 
-      - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-          repository: ${{ env.DOCKER_IMAGE }}
-          readme-filepath: ./README.md
-        continue-on-error: true
+      # Note: Disabled due to permission requirements
+      # Requires DOCKER_TOKEN with Read & Write permissions (not just push)
+      # - name: Update Docker Hub description
+      #   uses: peter-evans/dockerhub-description@v4
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_TOKEN }}
+      #     repository: ${{ env.DOCKER_IMAGE }}
+      #     readme-filepath: ./README.md
+      #   continue-on-error: true
 
   create-release:
     name: Create GitHub Release
