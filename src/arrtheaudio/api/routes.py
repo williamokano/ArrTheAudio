@@ -92,30 +92,34 @@ async def process_file_task(file_path: Path, config, job_id: str, arr_metadata: 
 async def sonarr_webhook(
     request: Request,
     payload: SonarrWebhookPayload,
-    background_tasks: BackgroundTasks,
 ):
-    """Handle Sonarr webhook.
+    """Handle Sonarr webhook (Phase 5: Multi-file support).
+
+    FIXES CRITICAL BUG: Now processes ALL files from episodeFiles array,
+    not just the first one. Creates one job per file.
 
     Args:
         request: FastAPI request
         payload: Sonarr webhook payload
-        background_tasks: Background tasks
 
     Returns:
-        Webhook response
+        Webhook response with multiple job IDs
     """
     app_state = request.app.state.arrtheaudio
     config = app_state.config
+    queue_manager = app_state.queue_manager
+
+    # Count files in payload
+    file_count = len(payload.episodeFiles) if payload.episodeFiles else 0
 
     logger.info(
         "Sonarr webhook received and validated",
         series_title=payload.series_title,
         series_id=payload.series.id,
-        file_path=payload.episode_file_path,
         event_type=payload.event_type,
         tvdb_id=payload.series_tvdb_id,
         tmdb_id=payload.series_tmdb_id,
-        episode_count=len(payload.episodeFiles) if payload.episodeFiles else 0,
+        file_count=file_count,  # Log actual count
         original_language=payload.original_language,
     )
 
@@ -131,45 +135,88 @@ async def sonarr_webhook(
             logger.warning("Invalid webhook signature")
             raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # Extract file path
-    if not payload.episode_file_path:
-        logger.warning("Missing episode file path in webhook")
+    # Check if files exist
+    if not payload.episodeFiles or len(payload.episodeFiles) == 0:
+        logger.warning("No episode files in webhook payload")
         return WebhookResponse(
-            status="rejected", message="Missing episode_file_path in payload"
+            status="rejected",
+            message="No episode files in payload",
         )
 
-    # Map path from Arr to local filesystem
+    # Generate webhook ID to link all jobs
+    webhook_id = f"webhook_{uuid.uuid4().hex[:12]}"
+    job_ids = []
     path_mapper = PathMapper(config.path_mappings)
-    local_path = path_mapper.map_path(payload.episode_file_path)
 
-    # Validate file exists
-    if not local_path.exists():
-        logger.error("File not found after path mapping", local_path=str(local_path))
-        return WebhookResponse(
-            status="rejected", message=f"File not found: {local_path}"
+    # Process ALL files (fixes critical bug!)
+    for episode_file in payload.episodeFiles:
+        file_path = episode_file.path
+
+        logger.debug(
+            "Processing file from webhook",
+            webhook_id=webhook_id,
+            file=file_path,
         )
 
-    # Extract metadata for TMDB lookup
-    arr_metadata = {
-        "media_type": "tv",
-        "tvdb_id": payload.series_tvdb_id,
-        "tmdb_id": payload.series_tmdb_id,  # Sonarr v4 provides TMDB ID
-        "title": payload.series_title,
-        "original_language": payload.original_language,  # From Sonarr's series data
-    }
+        # Map path from Arr to local filesystem
+        local_path = path_mapper.map_path(file_path)
 
-    # Generate job ID and queue for processing
-    job_id = str(uuid.uuid4())
+        # Validate file exists
+        if not local_path.exists():
+            logger.error(
+                "File not found after path mapping",
+                file=file_path,
+                local_path=str(local_path),
+            )
+            continue  # Skip this file, continue with others
 
-    # Add to background tasks with metadata
-    background_tasks.add_task(process_file_task, local_path, config, job_id, arr_metadata)
+        # Submit job to queue
+        from arrtheaudio.core.job_models import JobPriority, JobSource
 
-    logger.info("File queued for processing", file=str(local_path), job_id=job_id)
+        job = await queue_manager.submit_job(
+            file_path=local_path,
+            priority=JobPriority.HIGH,  # Webhooks are high priority
+            source=JobSource.SONARR,
+            webhook_id=webhook_id,
+            tmdb_id=payload.series_tmdb_id,
+            original_language=payload.original_language,
+            series_title=payload.series_title,
+        )
+
+        if job:
+            job_ids.append(job.job_id)
+            logger.info(
+                "Job created for file",
+                webhook_id=webhook_id,
+                job_id=job.job_id,
+                file=str(local_path),
+            )
+
+    # Check if any jobs were created
+    if not job_ids:
+        logger.error(
+            "No jobs created from webhook",
+            webhook_id=webhook_id,
+            file_count=file_count,
+        )
+        return WebhookResponse(
+            status="rejected",
+            message="Failed to create jobs for any files",
+        )
+
+    logger.info(
+        "Webhook processed successfully",
+        webhook_id=webhook_id,
+        files_queued=len(job_ids),
+        total_files=file_count,
+    )
 
     return WebhookResponse(
         status="accepted",
-        job_id=job_id,
-        message="File queued for processing",
+        webhook_id=webhook_id,
+        job_ids=job_ids,
+        files_queued=len(job_ids),
+        message=f"Queued {len(job_ids)} file(s) for processing",
     )
 
 
@@ -177,20 +224,19 @@ async def sonarr_webhook(
 async def radarr_webhook(
     request: Request,
     payload: RadarrWebhookPayload,
-    background_tasks: BackgroundTasks,
 ):
-    """Handle Radarr webhook.
+    """Handle Radarr webhook (Phase 5: Job queue support).
 
     Args:
         request: FastAPI request
         payload: Radarr webhook payload
-        background_tasks: Background tasks
 
     Returns:
-        Webhook response
+        Webhook response with job ID
     """
     app_state = request.app.state.arrtheaudio
     config = app_state.config
+    queue_manager = app_state.queue_manager
 
     logger.info(
         "Radarr webhook received and validated",
@@ -219,7 +265,8 @@ async def radarr_webhook(
     if not payload.movie_file_path:
         logger.warning("Missing movie file path in webhook")
         return WebhookResponse(
-            status="rejected", message="Missing movie_file_path in payload"
+            status="rejected",
+            message="Missing movie_file_path in payload",
         )
 
     # Map path from Arr to local filesystem
@@ -230,35 +277,52 @@ async def radarr_webhook(
     if not local_path.exists():
         logger.error("File not found after path mapping", local_path=str(local_path))
         return WebhookResponse(
-            status="rejected", message=f"File not found: {local_path}"
+            status="rejected",
+            message=f"File not found: {local_path}",
         )
 
-    # Extract metadata for TMDB lookup
-    arr_metadata = {
-        "media_type": "movie",
-        "tmdb_id": payload.movie_tmdb_id,
-        "title": payload.movie_title,
-        "original_language": payload.original_language,  # From Radarr v4 movie data
-    }
+    # Generate webhook ID (for consistency with Sonarr)
+    webhook_id = f"webhook_{uuid.uuid4().hex[:12]}"
 
-    # Generate job ID and queue for processing
-    job_id = str(uuid.uuid4())
+    # Submit job to queue
+    from arrtheaudio.core.job_models import JobPriority, JobSource
 
-    # Add to background tasks with metadata
-    background_tasks.add_task(process_file_task, local_path, config, job_id, arr_metadata)
+    job = await queue_manager.submit_job(
+        file_path=local_path,
+        priority=JobPriority.HIGH,  # Webhooks are high priority
+        source=JobSource.RADARR,
+        webhook_id=webhook_id,
+        tmdb_id=payload.movie_tmdb_id,
+        original_language=payload.original_language,
+        movie_title=payload.movie_title,
+    )
 
-    logger.info("File queued for processing", file=str(local_path), job_id=job_id)
+    if not job:
+        logger.error("Failed to create job from webhook", file=str(local_path))
+        return WebhookResponse(
+            status="rejected",
+            message="Failed to create job",
+        )
+
+    logger.info(
+        "Job created for movie file",
+        webhook_id=webhook_id,
+        job_id=job.job_id,
+        file=str(local_path),
+    )
 
     return WebhookResponse(
         status="accepted",
-        job_id=job_id,
+        webhook_id=webhook_id,
+        job_ids=[job.job_id],
+        files_queued=1,
         message="File queued for processing",
     )
 
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request):
-    """Health check endpoint.
+    """Health check endpoint (Phase 5: Job queue status).
 
     Args:
         request: FastAPI request
@@ -300,8 +364,24 @@ async def health_check(request: Request):
 
     checks["api"] = True
 
+    # Check job queue system (Phase 5)
+    queue_size = 0
+    if app_state.queue_manager:
+        try:
+            stats = await app_state.queue_manager.get_queue_stats()
+            queue_size = stats.get("queued", 0) + stats.get("running", 0)
+            checks["job_queue"] = True
+            checks["worker_pool"] = app_state.worker_pool.is_running if app_state.worker_pool else False
+        except Exception:
+            checks["job_queue"] = False
+            checks["worker_pool"] = False
+    else:
+        checks["job_queue"] = False
+        checks["worker_pool"] = False
+
     # Determine overall status
-    if all(checks.values()):
+    required_checks = ["api", "ffprobe"]  # mkvpropedit optional if only using MP4
+    if all(checks.get(k, False) for k in required_checks) and checks.get("job_queue", False):
         status = "healthy"
     elif checks["api"]:
         status = "degraded"
@@ -311,7 +391,7 @@ async def health_check(request: Request):
     return HealthResponse(
         status=status,
         version=__version__,
-        queue_size=0,  # TODO: Implement queue tracking
+        queue_size=queue_size,
         uptime_seconds=uptime,
         checks=checks,
     )

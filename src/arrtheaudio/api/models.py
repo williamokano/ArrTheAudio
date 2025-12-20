@@ -168,10 +168,12 @@ class RadarrWebhookPayload(BaseModel):
 
 
 class WebhookResponse(BaseModel):
-    """Webhook response model."""
+    """Webhook response model (Phase 5: Multiple jobs support)."""
 
     status: Literal["accepted", "rejected"]
-    job_id: Optional[str] = None
+    webhook_id: Optional[str] = None  # Links all jobs from this webhook
+    job_ids: List[str] = Field(default_factory=list)  # All created job IDs
+    files_queued: int = 0  # Number of files queued
     message: Optional[str] = None
 
 
@@ -180,7 +182,9 @@ class BatchRequest(BaseModel):
 
     path: str = Field(..., description="Path to scan")
     recursive: bool = Field(True, description="Scan recursively")
+    pattern: str = Field("**/*.{mkv,mp4}", description="File pattern")
     dry_run: bool = Field(False, description="Dry run mode")
+    priority: str = Field("normal", description="Job priority (high, normal, low)")
 
 
 class BatchResponse(BaseModel):
@@ -188,8 +192,61 @@ class BatchResponse(BaseModel):
 
     status: Literal["started", "rejected"]
     batch_id: Optional[str] = None
-    estimated_files: Optional[int] = None
+    total_files: int = 0
+    job_ids: List[str] = Field(default_factory=list)
     message: Optional[str] = None
+
+
+class JobResponse(BaseModel):
+    """Job response model."""
+
+    job_id: str
+    file_path: str
+    status: str
+    priority: str
+    source: str
+    container: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    success: Optional[bool] = None
+    error_message: Optional[str] = None
+    selected_track_index: Optional[int] = None
+    selected_track_language: Optional[str] = None
+    webhook_id: Optional[str] = None
+    batch_id: Optional[str] = None
+
+
+class QueueResponse(BaseModel):
+    """Queue status response model."""
+
+    total_jobs: int
+    queued: int
+    running: int
+    completed: int
+    failed: int
+    cancelled: int
+    workers_active: int
+    workers_total: int
+
+
+class WebhookJobsResponse(BaseModel):
+    """Webhook jobs response model."""
+
+    webhook_id: str
+    source: str
+    total_jobs: int
+    jobs: List[JobResponse]
+    all_completed: bool
+    any_failed: bool
+
+
+class StatsResponse(BaseModel):
+    """Statistics response model."""
+
+    queue_stats: QueueResponse
+    worker_stats: dict
+    uptime_seconds: Optional[float] = None
 
 
 class HealthResponse(BaseModel):

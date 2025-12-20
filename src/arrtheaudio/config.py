@@ -63,8 +63,14 @@ class ProcessingConfig(BaseModel):
 
     max_queue_size: int = Field(default=100, description="Maximum queue size")
     worker_count: int = Field(default=2, description="Number of worker threads")
+    max_mp4_concurrent: int = Field(
+        default=1, description="Maximum concurrent MP4 jobs (disk space safety)"
+    )
     timeout_seconds: int = Field(default=300, description="Processing timeout")
     retry_attempts: int = Field(default=2, description="Number of retry attempts")
+    job_retention_days: int = Field(
+        default=30, description="Keep completed/failed jobs for N days"
+    )
 
 
 class LoggingConfig(BaseModel):
