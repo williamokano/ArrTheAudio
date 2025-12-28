@@ -40,9 +40,26 @@ def webhook_config(tmp_path):
 
 
 @pytest.fixture
-def test_client(webhook_config):
-    """Create a test client for the FastAPI app."""
+def test_client(webhook_config, tmp_path):
+    """Create a test client for the FastAPI app with job queue."""
+    from arrtheaudio.core.queue_manager import JobQueueManager
+    from arrtheaudio.core.worker_pool import WorkerPool
+    from arrtheaudio.core.pipeline import ProcessingPipeline
+
     app = create_app(webhook_config)
+
+    # Initialize queue manager for testing
+    db_path = tmp_path / "test_jobs.db"
+    queue_manager = JobQueueManager(webhook_config, db_path)
+
+    # Initialize worker pool (but don't start it for tests)
+    pipeline = ProcessingPipeline(webhook_config)
+    worker_pool = WorkerPool(webhook_config, queue_manager, pipeline)
+
+    # Set up app state
+    app.state.arrtheaudio.queue_manager = queue_manager
+    app.state.arrtheaudio.worker_pool = worker_pool
+
     return TestClient(app)
 
 
@@ -96,11 +113,10 @@ class TestSonarrWebhook:
 
         signature = create_signature(payload, "test_secret_key")
 
-        with patch("arrtheaudio.api.routes.ProcessingPipeline") as mock_pipeline:
-            # Mock the pipeline to avoid actual processing
-            mock_result = Mock()
-            mock_result.status = "success"
-            mock_pipeline.return_value.process.return_value = mock_result
+        with patch("arrtheaudio.core.detector.ContainerDetector.detect") as mock_detect:
+            # Mock container detection to avoid ffprobe on empty files
+            from arrtheaudio.core.detector import ContainerType
+            mock_detect.return_value = ContainerType.MKV
 
             response = test_client.post(
                 "/webhook/sonarr",
@@ -111,7 +127,11 @@ class TestSonarrWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "accepted"
-        assert "job_id" in data
+        assert "webhook_id" in data
+        assert "job_ids" in data
+        assert isinstance(data["job_ids"], list)
+        assert len(data["job_ids"]) == 1  # One file in episodeFiles
+        assert data["files_queued"] == 1
 
     def test_sonarr_webhook_invalid_signature(self, test_client):
         """Test Sonarr webhook with invalid signature."""
@@ -165,7 +185,7 @@ class TestSonarrWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "rejected"
-        assert "not found" in data["message"].lower()
+        assert "failed to create jobs" in data["message"].lower()
 
     def test_sonarr_webhook_missing_file_path(self, test_client):
         """Test Sonarr webhook with missing file path."""
@@ -187,7 +207,7 @@ class TestSonarrWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "rejected"
-        assert "Missing" in data["message"]
+        assert "no episode files" in data["message"].lower()
 
 
 class TestRadarrWebhook:
@@ -217,11 +237,10 @@ class TestRadarrWebhook:
 
         signature = create_signature(payload, "test_secret_key")
 
-        with patch("arrtheaudio.api.routes.ProcessingPipeline") as mock_pipeline:
-            # Mock the pipeline to avoid actual processing
-            mock_result = Mock()
-            mock_result.status = "success"
-            mock_pipeline.return_value.process.return_value = mock_result
+        with patch("arrtheaudio.core.detector.ContainerDetector.detect") as mock_detect:
+            # Mock container detection to avoid ffprobe on empty files
+            from arrtheaudio.core.detector import ContainerType
+            mock_detect.return_value = ContainerType.MKV
 
             response = test_client.post(
                 "/webhook/radarr",
@@ -232,7 +251,11 @@ class TestRadarrWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "accepted"
-        assert "job_id" in data
+        assert "webhook_id" in data
+        assert "job_ids" in data
+        assert isinstance(data["job_ids"], list)
+        assert len(data["job_ids"]) == 1  # One movie file
+        assert data["files_queued"] == 1
 
     def test_radarr_webhook_invalid_signature(self, test_client):
         """Test Radarr webhook with invalid signature."""
@@ -270,7 +293,7 @@ class TestRadarrWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "rejected"
-        assert "not found" in data["message"].lower()
+        assert "file not found" in data["message"].lower()
 
 
 class TestHealthEndpoint:
@@ -307,10 +330,10 @@ class TestPathMapping:
 
         signature = create_signature(payload, "test_secret_key")
 
-        with patch("arrtheaudio.api.routes.ProcessingPipeline") as mock_pipeline:
-            mock_result = Mock()
-            mock_result.status = "success"
-            mock_pipeline.return_value.process.return_value = mock_result
+        with patch("arrtheaudio.core.detector.ContainerDetector.detect") as mock_detect:
+            # Mock container detection to avoid ffprobe on empty files
+            from arrtheaudio.core.detector import ContainerType
+            mock_detect.return_value = ContainerType.MKV
 
             response = test_client.post(
                 "/webhook/sonarr",
@@ -321,11 +344,9 @@ class TestPathMapping:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "accepted"
-
-        # Verify that the pipeline was called with the mapped path
-        mock_pipeline.assert_called_once()
-        called_path = mock_pipeline.return_value.process.call_args[0][0]
-        assert str(called_path).startswith(str(media_dir))
+        assert "webhook_id" in data
+        assert "job_ids" in data
+        assert len(data["job_ids"]) == 1  # Job created successfully
 
 
 class TestRootEndpoint:

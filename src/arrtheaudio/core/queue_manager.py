@@ -16,7 +16,6 @@ from arrtheaudio.core.job_models import (
     BatchRequest,
 )
 from arrtheaudio.core.detector import ContainerDetector
-from arrtheaudio.core.scanner import MediaScanner
 from arrtheaudio.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +34,6 @@ class JobQueueManager:
         self.config = config
         self.db = JobDatabase(db_path)
         self.detector = ContainerDetector()
-        self.scanner = MediaScanner(config)
         self._lock = asyncio.Lock()
 
     async def submit_job(
