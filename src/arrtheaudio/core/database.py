@@ -154,7 +154,7 @@ class JobDatabase:
                 conn.execute(sql, list(data.values()) + [job_id])
                 conn.commit()
 
-            logger.trace("Job updated in database", job_id=job.job_id)
+            logger.debug("Job updated in database", job_id=job.job_id)
             return True
 
         except Exception as e:

@@ -98,6 +98,8 @@ async def start_batch(
             else f"Dry run: would process {len(jobs)} files",
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Batch request failed", error=str(e), exc_info=True)
         return BatchResponse(
@@ -163,9 +165,9 @@ async def get_job(
         return JobResponse(
             job_id=job.job_id,
             file_path=job.file_path,
-            status=job.status.value,
-            priority=job.priority.value,
-            source=job.source.value,
+            status=job.status,
+            priority=job.priority,
+            source=job.source,
             container=job.container,
             created_at=job.created_at.isoformat(),
             started_at=job.started_at.isoformat() if job.started_at else None,
@@ -211,10 +213,10 @@ async def cancel_job(
         if not job:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        if job.status.value not in ("queued",):
+        if job.status not in ("queued",):
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot cancel job in status: {job.status.value}",
+                detail=f"Cannot cancel job in status: {job.status}",
             )
 
         success = await queue_manager.cancel_job(job_id)
@@ -265,9 +267,9 @@ async def get_webhook_jobs(
             JobResponse(
                 job_id=job.job_id,
                 file_path=job.file_path,
-                status=job.status.value,
-                priority=job.priority.value,
-                source=job.source.value,
+                status=job.status,
+                priority=job.priority,
+                source=job.source,
                 container=job.container,
                 created_at=job.created_at.isoformat(),
                 started_at=job.started_at.isoformat() if job.started_at else None,
@@ -286,13 +288,13 @@ async def get_webhook_jobs(
 
         # Calculate summary
         all_completed = all(
-            j.status.value in ("completed", "failed", "cancelled") for j in jobs
+            j.status in ("completed", "failed", "cancelled") for j in jobs
         )
-        any_failed = any(j.status.value == "failed" for j in jobs)
+        any_failed = any(j.status == "failed" for j in jobs)
 
         return WebhookJobsResponse(
             webhook_id=webhook_id,
-            source=jobs[0].source.value,
+            source=jobs[0].source,
             total_jobs=len(jobs),
             jobs=job_responses,
             all_completed=all_completed,
@@ -344,9 +346,9 @@ async def get_batch_jobs(
             JobResponse(
                 job_id=job.job_id,
                 file_path=job.file_path,
-                status=job.status.value,
-                priority=job.priority.value,
-                source=job.source.value,
+                status=job.status,
+                priority=job.priority,
+                source=job.source,
                 container=job.container,
                 created_at=job.created_at.isoformat(),
                 started_at=job.started_at.isoformat() if job.started_at else None,
@@ -365,9 +367,9 @@ async def get_batch_jobs(
 
         # Calculate summary
         all_completed = all(
-            j.status.value in ("completed", "failed", "cancelled") for j in jobs
+            j.status in ("completed", "failed", "cancelled") for j in jobs
         )
-        any_failed = any(j.status.value == "failed" for j in jobs)
+        any_failed = any(j.status == "failed" for j in jobs)
 
         return WebhookJobsResponse(
             webhook_id=batch_id,  # Reuse field name

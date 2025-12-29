@@ -61,7 +61,7 @@ class Worker:
 
                     if mp4_count >= max_mp4:
                         # MP4 limit reached, wait
-                        logger.trace(
+                        logger.debug(
                             "MP4 concurrency limit reached, waiting",
                             worker_id=self.worker_id,
                             running=mp4_count,

@@ -102,8 +102,8 @@ class JobQueueManager:
                         "Job submitted",
                         job_id=job.job_id,
                         file=str(file_path),
-                        priority=priority.value,
-                        source=source.value,
+                        priority=priority if isinstance(priority, str) else priority.value,
+                        source=source if isinstance(source, str) else source.value,
                     )
                     return job
                 else:
